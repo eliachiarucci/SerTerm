@@ -5,6 +5,30 @@ import (
 	"time"
 )
 
+func TestIsUpToDate(t *testing.T) {
+	tests := []struct {
+		name    string
+		current string
+		latest  string
+		want    bool
+	}{
+		{name: "same version", current: "1.2.3", latest: "v1.2.3", want: true},
+		{name: "tag without v prefix", current: "1.2.3", latest: "1.2.3", want: true},
+		{name: "older than latest", current: "1.2.2", latest: "v1.2.3", want: false},
+		{name: "dev build", current: "dev", latest: "v1.2.3", want: false},
+		{name: "empty tag", current: "1.2.3", latest: "", want: false},
+		{name: "bare v tag", current: "1.2.3", latest: "v", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isUpToDate(tt.current, tt.latest); got != tt.want {
+				t.Fatalf("isUpToDate(%q, %q) = %v, want %v", tt.current, tt.latest, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseOpenArgs(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -49,6 +49,7 @@ There are also a few subcommands:
 | `serterm open [--baud N] <device>` | connect and go straight to the terminal screen |
 | `serterm open [--baud N] <device> <secs>` | stream logs to stdout for `secs` seconds (max 60), then exit |
 | `serterm open --send "text" <device> <secs>` | send a line to the device, then stream the response |
+| `serterm update` | update serterm to the latest release (runs the install script) |
 | `serterm help` | show usage |
 
 The timed form of `open` is designed for scripts and AI agents: it needs no
@@ -102,7 +103,7 @@ go test ./...
 ## Code layout
 
 - `main.go` — root model; switches between the two screens
-- `cli.go` — `list`, `open`, and `help` subcommands
+- `cli.go` — `list`, `open`, `update`, and `help` subcommands
 - `ports.go` — device discovery (hides macOS `/dev/tty.*` duplicates, USB first)
 - `picker.go` — device selection screen
 - `terminal.go` — streaming view, input line, serial reader goroutine

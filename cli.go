@@ -1,10 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
+	"os/exec"
+	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"go.bug.st/serial"
@@ -19,6 +24,7 @@ usage:
                                          logs stream to stdout for that many
                                          seconds (max 60) and then serterm
                                          exits (handy for scripts and agents)
+  serterm update                         update serterm to the latest release
   serterm help                           show this help (also -h, --help)
 
 open flags (single or double dash both work):
@@ -47,6 +53,12 @@ func runCommand(args []string) *appModel {
 
 	case "open":
 		return runOpen(args[1:])
+
+	case "update":
+		if err := runUpdate(); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 
 	case "help", "-h", "--help":
 		fmt.Print(usageText)
@@ -114,6 +126,64 @@ func runOpen(args []string) *appModel {
 		os.Exit(1)
 	}
 	return nil
+}
+
+const installScriptURL = "https://raw.githubusercontent.com/eliachiarucci/serterm/main/install.sh"
+
+const latestReleaseURL = "https://api.github.com/repos/eliachiarucci/serterm/releases/latest"
+
+// runUpdate reinstalls serterm by piping the install script through sh,
+// unless the installed version already matches the latest release.
+func runUpdate() error {
+	if runtime.GOOS == "windows" {
+		return fmt.Errorf("update is not supported on Windows; download the zip from https://github.com/eliachiarucci/serterm/releases/latest")
+	}
+
+	latest, err := latestVersion()
+	if err != nil {
+		return fmt.Errorf("cannot check the latest version: %v\n"+
+			"check your internet connection, or download the latest release manually from\n"+
+			"https://github.com/eliachiarucci/serterm/releases/latest", err)
+	}
+	if isUpToDate(version, latest) {
+		fmt.Println("Already up to date (v" + version + ")")
+		return nil
+	}
+
+	cmd := exec.Command("sh", "-c", "curl -fsSL "+installScriptURL+" | sh")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("update failed: %w", err)
+	}
+	return nil
+}
+
+// latestVersion returns the tag of the latest GitHub release, e.g. "v1.2.3".
+func latestVersion() (string, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(latestReleaseURL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GET %s: %s", latestReleaseURL, resp.Status)
+	}
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return "", err
+	}
+	return release.TagName, nil
+}
+
+// isUpToDate reports whether the running version matches the latest release
+// tag. A "dev" build (built from source, no ldflags) never matches.
+func isUpToDate(current, latestTag string) bool {
+	latest := strings.TrimPrefix(latestTag, "v")
+	return latest != "" && current == latest
 }
 
 // maxOpenSeconds caps the time limit of a timed open.
