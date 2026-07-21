@@ -15,14 +15,11 @@ Talk to anything that speaks serial.
 curl -fsSL https://raw.githubusercontent.com/eliachiarucci/serterm/main/install.sh | sh
 ```
 
-Installs the latest release to `/usr/local/bin` (or `~/.local/bin` if that
-isn't writable).
-
 **Windows**
 
 Download the zip for your architecture from the
 [latest release](https://github.com/eliachiarucci/serterm/releases/latest),
-extract `serterm.exe`, and put it somewhere on your `PATH`.
+extract `serterm.exe`, and put it on your `PATH`.
 
 **Packages**
 
