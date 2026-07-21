@@ -19,7 +19,7 @@ usage:
                                          logs stream to stdout for that many
                                          seconds (max 60) and then serterm
                                          exits (handy for scripts and agents)
-  serterm help                           show this help
+  serterm help                           show this help (also -h, --help)
 
 open flags (single or double dash both work):
   --baud N      baud rate (default 115200)

@@ -104,6 +104,7 @@ func (m appModel) View() string {
 }
 
 func main() {
+	flag.Usage = func() { fmt.Print(usageText) }
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 	if *showVersion {
