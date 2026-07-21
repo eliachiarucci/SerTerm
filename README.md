@@ -3,7 +3,7 @@
 [![CI](https://github.com/eliachiarucci/serterm/actions/workflows/ci.yml/badge.svg)](https://github.com/eliachiarucci/serterm/actions/workflows/ci.yml)
 
 A simple serial terminal for the command line.
-Talk to anything that speaks serial.
+With AI agent-friendly CLI commands, talk to anything that speaks serial.
 
 ![SerTerm](images/demo.gif)
 
