@@ -47,6 +47,10 @@ type appModel struct {
 	terminal terminalModel
 	width    int
 	height   int
+
+	// initial, when set, is a device to connect to immediately on startup
+	// (the `open` command), skipping the picker.
+	initial *portSelectedMsg
 }
 
 func newAppModel() appModel {
@@ -54,6 +58,10 @@ func newAppModel() appModel {
 }
 
 func (m appModel) Init() tea.Cmd {
+	if m.initial != nil {
+		selected := *m.initial
+		return tea.Batch(m.picker.Init(), func() tea.Msg { return selected })
+	}
 	return m.picker.Init()
 }
 
@@ -103,7 +111,16 @@ func main() {
 		return
 	}
 
-	p := tea.NewProgram(newAppModel(), tea.WithAltScreen())
+	model := newAppModel()
+	if args := flag.Args(); len(args) > 0 {
+		tui := runCommand(args)
+		if tui == nil {
+			return
+		}
+		model = *tui
+	}
+
+	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)

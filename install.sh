@@ -6,7 +6,9 @@
 #
 # Environment variables:
 #   SERTERM_VERSION  - version to install (default: latest release)
-#   SERTERM_INSTALL  - install directory (default: /usr/local/bin, or ~/.local/bin if not writable)
+#   SERTERM_INSTALL  - install directory (default: the directory of the
+#                      existing install, if any; otherwise /usr/local/bin,
+#                      or ~/.local/bin if not writable)
 
 set -eu
 
@@ -26,13 +28,22 @@ main() {
 
     install_dir="${SERTERM_INSTALL:-}"
     if [ -z "$install_dir" ]; then
-        if [ -w /usr/local/bin ]; then
+        # Updates go to the directory of the existing install.
+        existing=$(command -v serterm 2>/dev/null || true)
+        if [ -n "$existing" ]; then
+            install_dir=$(dirname "$existing")
+        elif [ -w /usr/local/bin ]; then
             install_dir="/usr/local/bin"
         else
             install_dir="${HOME}/.local/bin"
         fi
     fi
     mkdir -p "$install_dir"
+    if [ ! -w "$install_dir" ]; then
+        echo "Cannot write to ${install_dir}." >&2
+        echo "Rerun with sudo, or choose a directory with SERTERM_INSTALL=<dir>." >&2
+        exit 1
+    fi
 
     archive="serterm_${version}_${os}_${arch}.tar.gz"
     url="https://github.com/${REPO}/releases/download/v${version}/${archive}"

@@ -40,7 +40,27 @@ Or build from source (see [Build](#build) below).
 serterm
 ```
 
-`serterm -version` prints the version.
+Running `serterm` with no arguments starts the interactive device picker.
+There are also a few subcommands:
+
+| Command | Action |
+|---------|--------|
+| `serterm list` | list connected serial devices (device, tab, description) |
+| `serterm open [--baud N] <device>` | connect and go straight to the terminal screen |
+| `serterm open [--baud N] <device> <secs>` | stream logs to stdout for `secs` seconds (max 60), then exit |
+| `serterm open --send "text" <device> <secs>` | send a line to the device, then stream the response |
+| `serterm help` | show usage |
+
+The timed form of `open` is designed for scripts and AI agents: it needs no
+TTY, prints raw device output, and always releases the port when it exits.
+Without a time limit, `open` refuses to run if stdout is not a terminal.
+
+```sh
+serterm open --baud 9600 /dev/cu.usbmodem1101 5   # capture 5 seconds of logs
+serterm open --send "status" /dev/cu.usbmodem1101 3   # send a command, capture the reply
+```
+
+`serterm --version` prints the version.
 
 **Device picker**
 
@@ -82,6 +102,7 @@ go test ./...
 ## Code layout
 
 - `main.go` — root model; switches between the two screens
+- `cli.go` — `list`, `open`, and `help` subcommands
 - `ports.go` — device discovery (hides macOS `/dev/tty.*` duplicates, USB first)
 - `picker.go` — device selection screen
 - `terminal.go` — streaming view, input line, serial reader goroutine
