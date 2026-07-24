@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
@@ -18,6 +20,34 @@ const terminalChrome = 3
 
 // maxContentBytes caps the scrollback buffer so long sessions stay light.
 const maxContentBytes = 256 * 1024
+
+const (
+	messagePrompt      = "❯ "
+	messagePlaceholder = "type a message, enter to send"
+	savePrompt         = "save ❯ "
+)
+
+type inputMode int
+
+const (
+	modeMessage inputMode = iota
+	modeSaveName
+	modeSavePath
+)
+
+// Where logs are written. It starts as the working directory
+var saveDir string
+
+func logSaveDir() string {
+	if saveDir == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			wd = "."
+		}
+		saveDir = wd
+	}
+	return saveDir
+}
 
 // serialDataMsg carries bytes read from the device.
 type serialDataMsg []byte
@@ -42,14 +72,19 @@ type terminalModel struct {
 	disconnected bool          // reading stopped on its own
 	pendingCR    bool          // last read chunk ended with \r
 
+	mode       inputMode
+	draft      string // message being typed before ctrl+s, restored after
+	saveName   string // file name entered in the first save step
+	saveExists bool   // a file with that name exists in the chosen directory
+
 	width  int
 	height int
 }
 
 func newTerminalModel(port serial.Port, device string, baud, width, height int) terminalModel {
 	input := textinput.New()
-	input.Prompt = "❯ "
-	input.Placeholder = "type a message, enter to send"
+	input.Prompt = messagePrompt
+	input.Placeholder = messagePlaceholder
 	input.SetWidth(inputWidth(width, input.Prompt))
 	focusCmd := input.Focus()
 
@@ -143,7 +178,22 @@ func (m terminalModel) Update(msg tea.Msg) (terminalModel, tea.Cmd) {
 		case "ctrl+d":
 			m.shutdown()
 			return m, func() tea.Msg { return backToPickerMsg{} }
+		case "ctrl+s":
+			if m.mode == modeMessage {
+				return m.enterSaveMode(), nil
+			}
+			return m.exitSaveMode(), nil
+		case "esc":
+			if m.mode != modeMessage {
+				return m.exitSaveMode(), nil
+			}
 		case "enter":
+			switch m.mode {
+			case modeSaveName:
+				return m.confirmSaveName(), nil
+			case modeSavePath:
+				return m.saveLog(), nil
+			}
 			return m.send(), nil
 		case "ctrl+l":
 			m.content = ""
@@ -152,15 +202,21 @@ func (m terminalModel) Update(msg tea.Msg) (terminalModel, tea.Cmd) {
 			return m, nil
 		// up/down is what the mouse wheel produces in alternate scroll
 		// mode, which the emulator uses because mouse reporting is off.
+		// While saving, these keys edit the file name/directory instead.
 		case "up", "down", "pgup", "pgdown", "home", "end":
-			var cmd tea.Cmd
-			m.viewport, cmd = m.viewport.Update(msg)
-			return m, cmd
+			if m.mode == modeMessage {
+				var cmd tea.Cmd
+				m.viewport, cmd = m.viewport.Update(msg)
+				return m, cmd
+			}
 		}
 	}
 
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
+	if m.mode == modeSavePath {
+		m.saveExists = fileExists(filepath.Join(strings.TrimSpace(m.input.Value()), m.saveName))
+	}
 	return m, cmd
 }
 
@@ -177,6 +233,78 @@ func (m terminalModel) send() terminalModel {
 	m.append(sentStyle.Render("→ "+text) + "\n")
 	m.input.Reset()
 	return m
+}
+
+/* Save Mode */
+// 1. ctrl+s enters save mode, clears the input line.
+// 2. User types a file name and presses enter.
+// 3. The input line shows the directory where the file will be saved.
+
+func (m terminalModel) enterSaveMode() terminalModel {
+	m.mode = modeSaveName
+	m.draft = m.input.Value()
+	m.input.Reset()
+	m.input.Prompt = savePrompt
+	m.input.Placeholder = "log file name"
+	m.input.SetWidth(inputWidth(m.width, m.input.Prompt))
+	return m
+}
+
+func (m terminalModel) exitSaveMode() terminalModel {
+	m.mode = modeMessage
+	m.input.Prompt = messagePrompt
+	m.input.Placeholder = messagePlaceholder
+	m.input.SetWidth(inputWidth(m.width, m.input.Prompt))
+	m.input.SetValue(m.draft)
+	m.input.CursorEnd()
+	m.draft = ""
+	m.saveName = ""
+	m.saveExists = false
+	return m
+}
+
+func (m terminalModel) confirmSaveName() terminalModel {
+	name := strings.TrimSpace(m.input.Value())
+	if name == "" {
+		return m
+	}
+	dir := logSaveDir()
+	switch sub := filepath.Dir(name); {
+	case filepath.IsAbs(name):
+		dir = sub
+	case sub != ".":
+		dir = filepath.Join(dir, sub)
+	}
+	m.mode = modeSavePath
+	m.saveName = filepath.Base(name)
+	m.saveExists = fileExists(filepath.Join(dir, m.saveName))
+	m.input.Prompt = fmt.Sprintf("save %s to ❯ ", m.saveName)
+	m.input.SetWidth(inputWidth(m.width, m.input.Prompt))
+	m.input.SetValue(dir)
+	m.input.CursorEnd()
+	return m
+}
+
+// Writes the stream (styling stripped) into the confirmed directory,
+// overwriting any existing file, and remembers the directory for later saves.
+func (m terminalModel) saveLog() terminalModel {
+	dir := strings.TrimSpace(m.input.Value())
+	if dir == "" {
+		return m
+	}
+	path := filepath.Join(dir, m.saveName)
+	if err := os.WriteFile(path, []byte(ansi.Strip(m.content)), 0o644); err != nil {
+		m.append(noticeStyle.Render(fmt.Sprintf("── save failed (%v) ──", err)) + "\n")
+		return m
+	}
+	saveDir = filepath.Dir(path)
+	m.append(noticeStyle.Render("── log saved to "+path+" ──") + "\n")
+	return m.exitSaveMode()
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // normalize converts device line endings to \n. A \r\n pair can arrive split
@@ -238,7 +366,19 @@ func (m terminalModel) View() string {
 	pad := max(m.width-lipgloss.Width(status), 0)
 	header := headerStyle.Render(status + strings.Repeat(" ", pad))
 
-	footer := dimStyle.Render(" enter: send · ctrl+l: clear · ctrl+d: devices · pgup/pgdn: scroll · ctrl+c: quit")
+	var footer string
+	switch m.mode {
+	case modeSaveName:
+		footer = dimStyle.Render(" enter: confirm name · esc: cancel")
+	case modeSavePath:
+		hint := " enter: save"
+		if m.saveExists {
+			hint += " (overwrites)"
+		}
+		footer = dimStyle.Render(hint + " · esc: cancel")
+	default:
+		footer = dimStyle.Render("ctrl+s: save log · ctrl+l: clear · ctrl+d: devices · ctrl+c: quit")
+	}
 
 	return header + "\n" + m.viewport.View() + "\n" + m.input.View() + "\n" + footer
 }

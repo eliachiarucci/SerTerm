@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -197,6 +199,140 @@ func TestCtrlCQuits(t *testing.T) {
 	}
 	if _, quit := cmd().(tea.QuitMsg); !quit {
 		t.Error("expected the quit command")
+	}
+}
+
+func TestCtrlSSavesLogAndRemembersDirectory(t *testing.T) {
+	dir := t.TempDir()
+	saveDir = dir
+	t.Cleanup(func() { saveDir = "" })
+
+	m := testTerminal(&fakePort{})
+	m.append("device output\n")
+	m.input.SetValue("half-typed message")
+
+	m, _ = m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	if m.mode != modeSaveName {
+		t.Fatal("ctrl+s should enter file name mode")
+	}
+	if m.input.Value() != "" {
+		t.Errorf("input should be cleared for the file name, got %q", m.input.Value())
+	}
+
+	m.input.SetValue("session.log")
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if m.mode != modeSavePath {
+		t.Fatal("enter should move to directory confirmation mode")
+	}
+	if m.input.Value() != dir {
+		t.Errorf("input should show the save directory %q, got %q", dir, m.input.Value())
+	}
+
+	// Edit the directory before confirming.
+	other := filepath.Join(dir, "logs")
+	if err := os.Mkdir(other, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m.input.SetValue(other)
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	moved := filepath.Join(other, "session.log")
+	data, err := os.ReadFile(moved)
+	if err != nil {
+		t.Fatalf("log file should exist: %v", err)
+	}
+	if string(data) != "device output\n" {
+		t.Errorf("log content = %q, want %q", data, "device output\n")
+	}
+	if m.mode != modeMessage {
+		t.Error("saving should return to message mode")
+	}
+	if m.input.Value() != "half-typed message" {
+		t.Errorf("draft should be restored, got %q", m.input.Value())
+	}
+	if saveDir != other {
+		t.Errorf("save directory should be remembered: got %q, want %q", saveDir, other)
+	}
+	if !strings.Contains(ansi.Strip(m.content), "log saved to "+moved) {
+		t.Error("a save notice should be appended to the stream")
+	}
+}
+
+func TestSaveOverwritesExistingFile(t *testing.T) {
+	dir := t.TempDir()
+	saveDir = dir
+	t.Cleanup(func() { saveDir = "" })
+
+	path := filepath.Join(dir, "session.log")
+	if err := os.WriteFile(path, []byte("old contents"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := testTerminal(&fakePort{})
+	m.append("new output\n")
+	m, _ = m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	m.input.SetValue("session.log")
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "new output\n" {
+		t.Errorf("file should be overwritten without asking, got %q", data)
+	}
+}
+
+func TestOverwriteHintOnlyWhenFileExists(t *testing.T) {
+	dir := t.TempDir()
+	saveDir = dir
+	t.Cleanup(func() { saveDir = "" })
+
+	m := testTerminal(&fakePort{})
+	m, _ = m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	m.input.SetValue("session.log")
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	if strings.Contains(ansi.Strip(m.View()), "(overwrites)") {
+		t.Error("overwrite hint should not show for a new file")
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "session.log"), []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Any edit to the directory re-checks for an existing file.
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
+
+	if !strings.Contains(ansi.Strip(m.View()), "(overwrites)") {
+		t.Error("overwrite hint should show when the file already exists")
+	}
+}
+
+func TestEscCancelsSaveModeAndRestoresDraft(t *testing.T) {
+	m := testTerminal(&fakePort{})
+	m.input.SetValue("half-typed message")
+
+	m, _ = m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	m.input.SetValue("session.log")
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+
+	if m.mode != modeMessage {
+		t.Error("esc should leave save mode")
+	}
+	if m.input.Value() != "half-typed message" {
+		t.Errorf("draft should be restored, got %q", m.input.Value())
+	}
+}
+
+func TestSaveIgnoresEmptyFileName(t *testing.T) {
+	m := testTerminal(&fakePort{})
+
+	m, _ = m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	if m.mode != modeSaveName {
+		t.Error("enter on an empty file name should stay in name mode")
 	}
 }
 

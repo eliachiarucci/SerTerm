@@ -75,6 +75,7 @@ serterm open /dev/cu.usbmodem1101 -s "reboot" -c   # just send a message and clo
 | Key | Action |
 |-----|--------|
 | `enter` | send the input line (a `\n` is appended) |
+| `ctrl+s` | save the output stream to a log file |
 | `ctrl+l` | clear the output stream |
 | `ctrl+d` | back to the device picker |
 | `pgup`/`pgdn` | scroll the output |
