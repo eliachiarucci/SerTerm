@@ -14,9 +14,14 @@ A simple serial terminal for the command line.
 curl -fsSL https://raw.githubusercontent.com/eliachiarucci/serterm/main/install.sh | sh
 ```
 
-**Windows**
+**Windows** (PowerShell)
 
-Download the zip for your architecture from the
+```powershell
+irm https://raw.githubusercontent.com/eliachiarucci/serterm/main/install.ps1 | iex
+```
+
+This installs to `%LOCALAPPDATA%\Programs\serterm` and adds it to your
+`PATH`. Alternatively, download the zip for your architecture from the
 [latest release](https://github.com/eliachiarucci/serterm/releases/latest),
 extract `serterm.exe`, and put it on your `PATH`.
 

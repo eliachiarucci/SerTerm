@@ -153,17 +153,17 @@ func runOpen(args []string) {
 	}
 }
 
-const installScriptURL = "https://raw.githubusercontent.com/eliachiarucci/serterm/main/install.sh"
+const (
+	installScriptURL   = "https://raw.githubusercontent.com/eliachiarucci/serterm/main/install.sh"
+	installScriptURLPS = "https://raw.githubusercontent.com/eliachiarucci/serterm/main/install.ps1"
+)
 
 const latestReleaseURL = "https://api.github.com/repos/eliachiarucci/serterm/releases/latest"
 
-// runUpdate reinstalls serterm by piping the install script through sh,
-// unless the installed version already matches the latest release.
+// runUpdate reinstalls serterm by piping the install script through sh
+// (or PowerShell on Windows), unless the installed version already matches
+// the latest release.
 func runUpdate() error {
-	if runtime.GOOS == "windows" {
-		return fmt.Errorf("update is not supported on Windows; download the zip from https://github.com/eliachiarucci/serterm/releases/latest")
-	}
-
 	latest, err := latestVersion()
 	if err != nil {
 		return fmt.Errorf("cannot check the latest version: %v\n"+
@@ -175,7 +175,12 @@ func runUpdate() error {
 		return nil
 	}
 
-	cmd := exec.Command("sh", "-c", "curl -fsSL "+installScriptURL+" | sh")
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", "irm "+installScriptURLPS+" | iex")
+	} else {
+		cmd = exec.Command("sh", "-c", "curl -fsSL "+installScriptURL+" | sh")
+	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {

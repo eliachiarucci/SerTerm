@@ -21,8 +21,8 @@ main() {
     version="${version#v}"
 
     if [ "$os" = "windows" ]; then
-        echo "On Windows, download the zip from:" >&2
-        echo "  https://github.com/${REPO}/releases/latest" >&2
+        echo "On Windows, run this in PowerShell instead:" >&2
+        echo "  irm https://raw.githubusercontent.com/${REPO}/main/install.ps1 | iex" >&2
         exit 1
     fi
 
